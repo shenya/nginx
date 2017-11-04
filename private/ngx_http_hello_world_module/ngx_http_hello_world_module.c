@@ -2,6 +2,7 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 #include <pri_test.h>
+#include <moon_db.h>
 #include "cJSON.h"
 
 typedef struct {
@@ -99,6 +100,8 @@ static void ngx_http_hello_world_client_body_handler_pt(ngx_http_request_t *r)
 
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
             "receive body:%s", body_buf);
+
+    test_mysql(1, 2, r->connection->log);
 
     root = cJSON_Parse((char *)body_buf);
     if (NULL == root)
