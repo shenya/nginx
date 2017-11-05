@@ -80,6 +80,7 @@ static void ngx_http_hello_world_client_body_handler_pt(ngx_http_request_t *r)
     cJSON *root = NULL;
     cJSON *name = NULL;
     char json_buf[256] = {0};
+    int db_ret = 0;
 
     ngx_http_hello_world_loc_conf_t* hlcf = NULL;
     hlcf = ngx_http_get_module_loc_conf(r, ngx_http_hello_world_module);
@@ -106,20 +107,73 @@ static void ngx_http_hello_world_client_body_handler_pt(ngx_http_request_t *r)
     root = cJSON_Parse((char *)body_buf);
     if (NULL == root)
     {
-
+        return;
     }
     name = cJSON_GetObjectItemCaseSensitive(root, "name");
+    if (NULL == name)
+    {
+        return;
+    }
 
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
                           "name: %s", name->valuestring);
+    moon_account_t account;
 
+    memset(&account, 0, sizeof(account));
+    snprintf(account.name, sizeof(account.name), "%s", name->valuestring);
+    db_ret = moon_db_init_internal(r->connection->log);
+    if (0 != db_ret)
+    {
+        return;
+    }
 
+    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+            "000");
+
+    db_ret = moon_db_account_query(r->connection->log, "my_ngx",
+            &account);
+    if (0 != db_ret && MOON_DB_NO_LINE != db_ret)
+    {
+        ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                "db query failed: %d", db_ret);
+        return;
+    }
+
+    if (MOON_DB_NO_LINE == db_ret)
+    {
+        account.reg_ts = time(NULL);
+        db_ret = moon_db_account_add(r->connection->log, "my_ngx",
+                &account);
+        if (0 != db_ret)
+        {
+            ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                    "%s: db ret: %d", __FUNCTION__, db_ret);
+            return;
+        }
+    }
 
 #if 1
 //JSON response
             root = cJSON_CreateObject();
             cJSON_AddItemToObject(root, "res-info",
-                    cJSON_CreateString("hello-world"));
+                    cJSON_CreateString("account_info"));
+
+            cJSON_AddItemToObject(root, "name",
+                    cJSON_CreateString(account.name));
+
+            cJSON_AddItemToObject(root, "reg_timestamp",
+                    cJSON_CreateNumber(account.reg_ts));
+
+            cJSON_AddItemToObject(root, "last_login_timestamp",
+                    cJSON_CreateNumber(account.last_login_ts));
+
+            account.last_login_ts = time(NULL);
+            db_ret = moon_db_account_update(r->connection->log, "my_ngx",
+                    &account);
+            if (0 != db_ret)
+            {
+                return;
+            }
 
             r->headers_out.content_type.len = sizeof("application/json; charset=utf-8") - 1;
             r->headers_out.content_type.data = (u_char*)"application/json; charset=utf-8";
