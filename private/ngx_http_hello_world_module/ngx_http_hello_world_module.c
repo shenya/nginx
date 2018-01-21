@@ -277,24 +277,110 @@ static void ngx_http_hello_world_client_body_handler_pt(ngx_http_request_t *r)
 #endif
 }
 #if 1
-static ngx_int_t ngx_http_hello_world_handler(ngx_http_request_t* r) {
+
+int ngx_response_info(ngx_http_request_t* r)
+{
     ngx_int_t rc = NGX_OK;
-    //ngx_buf_t* b;
-    //ngx_chain_t out[2];
-    //char log_buf[32] = {0};
+    ngx_buf_t* b = NULL;
+    ngx_chain_t out[2];
+    char log_buf[32] = {0};
+    cJSON *root = NULL;
+    char json_buf[256] = {0};
 
-    //ngx_http_hello_world_loc_conf_t* hlcf = NULL;
-    //hlcf = ngx_http_get_module_loc_conf(r, ngx_http_hello_world_module);
+    root = cJSON_CreateObject();
+    cJSON_AddItemToObject(root, "res-info",
+    cJSON_CreateString("no account info in body"));
 
-    if (ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len) <= 0)
-    {
-        ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                          "%s", "content length is 0");
+    r->headers_out.content_type.len = sizeof("application/json; charset=utf-8") - 1;
+    r->headers_out.content_type.data = (u_char*)"application/json; charset=utf-8";
+
+    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+
+    //
+    show_str(log_buf, 32);
+    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                          "%s", log_buf);
+
+    out[0].buf = b;
+    out[0].next = NULL;
+
+    snprintf(json_buf, sizeof(json_buf), "%s", cJSON_Print(root));
+    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+            "%s,length:%d", json_buf, strlen(json_buf));
+    b->pos = (u_char*)cJSON_Print(root);
+    b->last = b->pos + strlen(json_buf);
+
+    b->memory = 1;
+    b->last_buf = 1;
+
+    //b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+
+    //out[1].buf = b;
+    //out[1].next = NULL;
+
+    //b->pos = hlcf->output_words.data;
+    //b->last = hlcf->output_words.data + (hlcf->output_words.len);
+    //b->memory = 1;
+    //b->last_buf = 1;
+
+            
+        
+    r->headers_out.status = NGX_HTTP_OK;
+    r->headers_out.content_length_n = strlen(json_buf);
+    rc = ngx_http_send_header(r);
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
         return rc;
     }
 
+    rc = ngx_http_output_filter(r, &out[0]);
+    ngx_http_finalize_request(r,rc);
+
+    cJSON_Delete(root);
+
+    return rc;
+}
+
+static ngx_int_t ngx_http_hello_world_handler(ngx_http_request_t* r) {
+    ngx_int_t rc = NGX_OK;
+    int no_content_flag = 0;
+    //ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                             //"test:%V", &r->headers_in.content_length->value);
+
+    if (r->headers_in.content_length)
+    {
+        ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                                  "before: content length is %d",
+                                  ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len));
+    }
+    else
+    {
+        no_content_flag = 1;
+        ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                              "no content");
+    }
+
+#if 1
+    //return NGX_ERROR;
+    if (0 == no_content_flag && ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len) <= 0)
+    {
+       ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                              "in: content length is %d",
+                              ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len));
+        no_content_flag = 1;
+        ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                              "no content");
+    }
+#endif
+
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                          "content length:%d", ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len));
+                          "no content flag:%d", no_content_flag);
+    if (no_content_flag)
+    {
+        return ngx_response_info(r);
+    }
+
+    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                          "after content length:%d", ngx_atoi(r->headers_in.content_length->value.data, r->headers_in.content_length->value.len));
 
     rc = ngx_http_read_client_request_body(r,
             ngx_http_hello_world_client_body_handler_pt);
